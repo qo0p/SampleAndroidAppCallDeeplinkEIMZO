@@ -131,11 +131,7 @@ public class MainActivity extends AppCompatActivity {
                     String qrCode = makeQRCode(siteId, documentId, hashString);
                     Log.d("auth qrCode", qrCode);
 
-                    String deepLink = "eimzo://sign?qc=" + qrCode;
-                    Log.d("auth deepLink", deepLink);
-
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
-                    startActivity(browserIntent);
+                    makeAndCallDeepLink(qrCode);
 
                     Log.d("auth status", "run get status thread");
 
@@ -201,11 +197,7 @@ public class MainActivity extends AppCompatActivity {
                     String qrCode = makeQRCode(siteId, documentId, hashString);
                     Log.d("sign qrCode", qrCode);
 
-                    String deepLink = "eimzo://sign?qc=" + qrCode;
-                    Log.d("sign deepLink", deepLink);
-
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
-                    startActivity(browserIntent);
+                    makeAndCallDeepLink(qrCode);
 
                     Log.d("sign status", "run get status thread");
 
@@ -230,6 +222,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         t.start();
+    }
+
+    void makeAndCallDeepLink(String qrCode){
+        String deepLink = "eimzo://sign?qc=" + qrCode;
+        Log.d("makeAndCallDeepLink", deepLink);
+
+        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
+        startActivity(browserIntent);
     }
 
     byte[] calcHash(String text) throws Exception {
