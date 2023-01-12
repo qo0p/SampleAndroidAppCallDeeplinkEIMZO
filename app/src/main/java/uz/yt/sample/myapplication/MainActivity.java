@@ -1,7 +1,5 @@
 package uz.yt.sample.myapplication;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -11,6 +9,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -19,7 +19,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32;
@@ -250,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
         CRC32 crc = new CRC32();
         crc.update(Hex.decode(qrBody));
         long c1 = crc.getValue();
-        String crc32 = zerePad(Long.toHexString(c1), 8);
+        String crc32 = zeroPad(Long.toHexString(c1), 8);
 
         Log.d("makeQRCode", "crc32(" + qrBody + ") = " + crc32);
 
@@ -302,7 +301,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    void pollStatus(String documentId, Runnable onSccess) {
+    void pollStatus(String documentId, Runnable onSuccess) {
         Thread statusThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -312,7 +311,7 @@ public class MainActivity extends AppCompatActivity {
 
                         Thread.sleep(STATUS_CHECK_INTERVAL);
 
-                        String postData = "documentId=" + documentId;
+                        String postData = "documentId=" + URLEncoder.encode(documentId, "UTF-8");
 
                         RawResult res = post(new URL(STATUS_URL), postData.getBytes());
                         Log.d("auth status number", String.valueOf(checkCount));
@@ -332,7 +331,7 @@ public class MainActivity extends AppCompatActivity {
 
                         if (status == 1) {
 
-                            onSccess.run();
+                            onSuccess.run();
 
                             break;
                         }
@@ -353,7 +352,7 @@ public class MainActivity extends AppCompatActivity {
         statusThread.start();
     }
 
-    static String zerePad(String s, int count) {
+    static String zeroPad(String s, int count) {
         if (s.length() >= count) {
             return s;
         }
