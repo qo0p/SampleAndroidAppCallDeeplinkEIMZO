@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32;
@@ -29,10 +31,12 @@ public class MainActivity extends AppCompatActivity {
     // !!! CHANGE IT TO YOUR DOMAIN, WHICH RUNS REST-API, DO NOT USE THIS m.e-imzo.uz DOMAIN IN PRODUCTION
     private static String DOMAIN = "m.e-imzo.uz";
     private static String AUTH_URL = "https://" + DOMAIN + "/frontend/auth";
+    private static String SIGN_URL = "https://" + DOMAIN + "/frontend/sign";
     private static String STATUS_URL = "https://" + DOMAIN + "/frontend/status";
 
     // !!! CHANGE IT TO YOUR BACKEND API
     private static String AUTH_RESULT_URL = "https://" + DOMAIN + "/demo2/user_auth_result.php";
+    private static String VERIFY_RESULT_URL = "https://" + DOMAIN + "/demo2/doc_verify_result.php";
 
     private final int STATUS_CHECK_EACH_SECOND = 5;
     private final int STATUS_CHECK_INTERVAL = STATUS_CHECK_EACH_SECOND * 1000;
@@ -41,6 +45,7 @@ public class MainActivity extends AppCompatActivity {
 
     TextView statusText;
     EditText resultText;
+    EditText signText;
 
     final void updateStatusText(final String text) {
         runOnUiThread(new Runnable() {
@@ -68,107 +73,217 @@ public class MainActivity extends AppCompatActivity {
 
         statusText = findViewById(R.id.tvStatus);
         resultText = findViewById(R.id.etResult);
+        signText = findViewById(R.id.etJsonDocument);
 
         Button authButton = findViewById(R.id.bAuth);
         authButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                doAuth();
+            }
+        });
 
-                Thread t = new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        updateStatusText("");
-                        updateResultText("");
-                        try {
-                            RawResult res = post(new URL(AUTH_URL), new byte[0]);
-                            Log.d("auth http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
-                            Log.d("auth http body", res.responseBody);
-                            if (res.responseCode != 200) {
-                                throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
-                            }
-                            updateResultText(res.responseBody);
-
-
-                            JSONObject jsonObject = new JSONObject(res.responseBody);
-                            int status = jsonObject.getInt("status");
-                            String message = jsonObject.getString("message");
-                            if (status != 1) {
-                                throw new Exception("AUTH STATUS " + status + " - " + message);
-                            }
-
-                            String siteId = jsonObject.getString("siteId");
-                            final String documentId = jsonObject.getString("documentId");
-                            String challange = jsonObject.getString("challange");
-
-                            Log.d("auth siteId", siteId);
-                            Log.d("auth documentId", documentId);
-                            Log.d("auth challange", challange);
-
-                            byte[] data = challange.getBytes();
-                            OzDSt1106Digest digest = new OzDSt1106Digest();
-                            digest.reset();
-                            digest.update(data, 0, data.length);
-
-                            byte[] hash = new byte[digest.getDigestSize()];
-                            digest.doFinal(hash, 0);
-
-                            String hashString = Hex.encode(hash);
-                            Log.d("auth hashString", hashString);
-
-                            String qrBody = siteId + documentId + hashString;
-
-                            CRC32 crc = new CRC32();
-                            crc.update(Hex.decode(qrBody));
-                            long c1 = crc.getValue();
-                            String crc32 = zerePad(Long.toHexString(c1), 8);
-
-                            Log.d("auth crc32", "crc32(" + qrBody + ") = " + crc32);
-
-                            String qrCode = qrBody + crc32;
-                            Log.d("auth qrCode", qrCode);
-
-                            String deepLink = "eimzo://sign?qc=" + qrCode;
-                            Log.d("auth deepLink", deepLink);
-
-
-                            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
-                            startActivity(browserIntent);
-
-
-                            Log.d("auth status", "run get status thread");
-
-                            pollStatus(documentId, new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        getAuthResult(documentId);
-                                    } catch (Throwable e) {
-                                        Log.d("auth result error", e.getClass().getSimpleName() + ": " + e.getMessage());
-                                        updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
-                                    }
-                                }
-                            });
-
-
-                        } catch (Throwable e) {
-                            Log.d("auth error", e.getClass().getSimpleName() + ": " + e.getMessage());
-                            updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
-
-                        }
-                    }
-                });
-                t.start();
-
+        Button signButton = findViewById(R.id.bSign);
+        signButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                doSign();
             }
         });
 
     }
 
+    void doAuth() {
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                updateStatusText("");
+                updateResultText("");
+                try {
+                    RawResult res = post(new URL(AUTH_URL), new byte[0]);
+                    Log.d("auth http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
+                    Log.d("auth http body", res.responseBody);
+                    if (res.responseCode != 200) {
+                        throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
+                    }
+                    updateResultText(res.responseBody);
+
+
+                    JSONObject jsonObject = new JSONObject(res.responseBody);
+                    int status = jsonObject.getInt("status");
+                    String message = jsonObject.getString("message");
+                    if (status != 1) {
+                        throw new Exception("AUTH STATUS " + status + " - " + message);
+                    }
+
+                    String siteId = jsonObject.getString("siteId");
+                    final String documentId = jsonObject.getString("documentId");
+                    String challange = jsonObject.getString("challange");
+
+                    Log.d("auth siteId", siteId);
+                    Log.d("auth documentId", documentId);
+                    Log.d("auth challange", challange);
+
+                    byte[] hash = calcHash(challange);
+
+                    String hashString = Hex.encode(hash);
+                    Log.d("auth hashString", hashString);
+
+                    String qrCode = makeQRCode(siteId, documentId, hashString);
+                    Log.d("auth qrCode", qrCode);
+
+                    String deepLink = "eimzo://sign?qc=" + qrCode;
+                    Log.d("auth deepLink", deepLink);
+
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
+                    startActivity(browserIntent);
+
+                    Log.d("auth status", "run get status thread");
+
+                    pollStatus(documentId, new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                getAuthResult(documentId);
+                            } catch (Throwable e) {
+                                Log.d("auth result error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                                updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+                            }
+                        }
+                    });
+
+
+                } catch (Throwable e) {
+                    Log.d("auth error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                    updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+
+                }
+            }
+        });
+        t.start();
+    }
+
+    void doSign() {
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                updateStatusText("");
+                updateResultText("");
+                try {
+                    RawResult res = post(new URL(SIGN_URL), new byte[0]);
+                    Log.d("sign http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
+                    Log.d("sign http body", res.responseBody);
+                    if (res.responseCode != 200) {
+                        throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
+                    }
+                    updateResultText(res.responseBody);
+
+
+                    JSONObject jsonObject = new JSONObject(res.responseBody);
+                    int status = jsonObject.getInt("status");
+                    String message = jsonObject.getString("message");
+                    if (status != 1) {
+                        throw new Exception("SIGN STATUS " + status + " - " + message);
+                    }
+
+                    String siteId = jsonObject.getString("siteId");
+                    final String documentId = jsonObject.getString("documentId");
+                    final String document = signText.getText().toString();
+
+                    Log.d("sign siteId", siteId);
+                    Log.d("sign documentId", documentId);
+                    Log.d("sign document", document);
+
+                    byte[] hash = calcHash(document);
+
+                    String hashString = Hex.encode(hash);
+                    Log.d("sign hashString", hashString);
+
+                    String qrCode = makeQRCode(siteId, documentId, hashString);
+                    Log.d("sign qrCode", qrCode);
+
+                    String deepLink = "eimzo://sign?qc=" + qrCode;
+                    Log.d("sign deepLink", deepLink);
+
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink));
+                    startActivity(browserIntent);
+
+                    Log.d("sign status", "run get status thread");
+
+                    pollStatus(documentId, new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                getVerifyResult(documentId, document);
+                            } catch (Throwable e) {
+                                Log.d("sign result error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                                updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+                            }
+                        }
+                    });
+
+
+                } catch (Throwable e) {
+                    Log.d("sign error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                    updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+
+                }
+            }
+        });
+        t.start();
+    }
+
+    byte[] calcHash(String text) throws Exception {
+        byte[] data = text.getBytes();
+        OzDSt1106Digest digest = new OzDSt1106Digest();
+        digest.reset();
+        digest.update(data, 0, data.length);
+
+        byte[] hash = new byte[digest.getDigestSize()];
+        digest.doFinal(hash, 0);
+        return hash;
+    }
+
+    String makeQRCode(String siteId, String documentId, String hashString) {
+        String qrBody = siteId + documentId + hashString;
+
+        CRC32 crc = new CRC32();
+        crc.update(Hex.decode(qrBody));
+        long c1 = crc.getValue();
+        String crc32 = zerePad(Long.toHexString(c1), 8);
+
+        Log.d("makeQRCode", "crc32(" + qrBody + ") = " + crc32);
+
+        String qrCode = qrBody + crc32;
+        return qrCode;
+    }
+
     Pattern fetchJson = Pattern.compile("\\n\\s*(\\{.*\\})\\n*<");
 
     void getAuthResult(String documentId) throws Exception {
-        String postData2 = "documentId=" + documentId;
-        RawResult res2 = get(new URL(AUTH_RESULT_URL + "?documentId=" + documentId));
+        String getData2 = "documentId=" + URLEncoder.encode(documentId, "UTF-8");
+        RawResult res2 = get(new URL(AUTH_RESULT_URL + "?" + getData2));
+        Log.d("auth result http status", "HTTP " + res2.responseCode + " - " + res2.responseMessage);
+        Log.d("auth result http body", res2.responseBody);
+        if (res2.responseCode != 200) {
+            throw new Exception("HTTP " + res2.responseCode + " - " + res2.responseMessage);
+        }
+
+        // !!! DO NOT USE THIS WAY, AS IT IS JUST FOR DEMO
+        Matcher m = fetchJson.matcher(res2.responseBody);
+        boolean hasJson = m.find();
+        int groupCount = m.groupCount();
+        Log.d("auth result parse", "hasJson= " + hasJson + ", groupCount=" + groupCount);
+        if (hasJson && groupCount > 0) {
+            updateResultText(m.group(1));
+        } else {
+            updateResultText(res2.responseBody);
+        }
+    }
+
+    void getVerifyResult(String documentId, String document) throws Exception {
+        String postData2 = "documentId=" + URLEncoder.encode(documentId, "UTF-8") + "&Document=" + URLEncoder.encode(document, "UTF-8");
+        RawResult res2 = post(new URL(VERIFY_RESULT_URL), postData2.getBytes());
         Log.d("auth result http status", "HTTP " + res2.responseCode + " - " + res2.responseMessage);
         Log.d("auth result http body", res2.responseBody);
         if (res2.responseCode != 200) {
@@ -228,7 +343,7 @@ public class MainActivity extends AppCompatActivity {
                     Log.d("auth status error", e.getClass().getSimpleName() + ": " + e.getMessage());
                     updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
                 }
-                if(checkCount == 0){
+                if (checkCount == 0) {
                     Log.d("auth status error", "timeout");
                     updateStatusText("auth status timeout");
                 }
