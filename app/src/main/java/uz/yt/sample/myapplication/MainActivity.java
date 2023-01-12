@@ -137,50 +137,18 @@ public class MainActivity extends AppCompatActivity {
 
                             Log.d("auth status", "run get status thread");
 
-                            Thread statusThread = new Thread(new Runnable() {
+                            pollStatus(documentId, new Runnable() {
                                 @Override
                                 public void run() {
-                                    int checkCount = STATUS_CHECK_LIMIT;
                                     try {
-                                        while (checkCount > 0) {
-
-                                            Thread.sleep(STATUS_CHECK_INTERVAL);
-
-                                            String postData = "documentId=" + documentId;
-
-                                            RawResult res = post(new URL(STATUS_URL), postData.getBytes());
-                                            Log.d("auth status number", String.valueOf(checkCount));
-                                            Log.d("auth status http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
-                                            Log.d("auth status http body", res.responseBody);
-                                            if (res.responseCode != 200) {
-                                                throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
-                                            }
-                                            updateResultText(res.responseBody);
-
-                                            JSONObject jsonObject = new JSONObject(res.responseBody);
-                                            int status = jsonObject.getInt("status");
-                                            String message = jsonObject.getString("message");
-                                            if (status != 1 && status != 2) {
-                                                throw new Exception("STATUS " + status + " - " + message);
-                                            }
-
-                                            if (status == 1) {
-
-                                                getAuthResult(documentId);
-
-                                                break;
-                                            }
-
-                                            checkCount--;
-                                        }
+                                        getAuthResult(documentId);
                                     } catch (Throwable e) {
-                                        Log.d("auth status error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                                        Log.d("auth result error", e.getClass().getSimpleName() + ": " + e.getMessage());
                                         updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
                                     }
                                 }
                             });
 
-                            statusThread.start();
 
                         } catch (Throwable e) {
                             Log.d("auth error", e.getClass().getSimpleName() + ": " + e.getMessage());
@@ -200,7 +168,7 @@ public class MainActivity extends AppCompatActivity {
 
     void getAuthResult(String documentId) throws Exception {
         String postData2 = "documentId=" + documentId;
-        RawResult res2 = get(new URL(AUTH_RESULT_URL+"?documentId="+documentId));
+        RawResult res2 = get(new URL(AUTH_RESULT_URL + "?documentId=" + documentId));
         Log.d("auth result http status", "HTTP " + res2.responseCode + " - " + res2.responseMessage);
         Log.d("auth result http body", res2.responseBody);
         if (res2.responseCode != 200) {
@@ -212,11 +180,62 @@ public class MainActivity extends AppCompatActivity {
         boolean hasJson = m.find();
         int groupCount = m.groupCount();
         Log.d("auth result parse", "hasJson= " + hasJson + ", groupCount=" + groupCount);
-        if(hasJson && groupCount > 0){
+        if (hasJson && groupCount > 0) {
             updateResultText(m.group(1));
-        }else {
+        } else {
             updateResultText(res2.responseBody);
         }
+    }
+
+    void pollStatus(String documentId, Runnable onSccess) {
+        Thread statusThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int checkCount = STATUS_CHECK_LIMIT;
+                try {
+                    while (checkCount > 0) {
+
+                        Thread.sleep(STATUS_CHECK_INTERVAL);
+
+                        String postData = "documentId=" + documentId;
+
+                        RawResult res = post(new URL(STATUS_URL), postData.getBytes());
+                        Log.d("auth status number", String.valueOf(checkCount));
+                        Log.d("auth status http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
+                        Log.d("auth status http body", res.responseBody);
+                        if (res.responseCode != 200) {
+                            throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
+                        }
+                        updateResultText(res.responseBody);
+
+                        JSONObject jsonObject = new JSONObject(res.responseBody);
+                        int status = jsonObject.getInt("status");
+                        String message = jsonObject.getString("message");
+                        if (status != 1 && status != 2) {
+                            throw new Exception("STATUS " + status + " - " + message);
+                        }
+
+                        if (status == 1) {
+
+                            onSccess.run();
+
+                            break;
+                        }
+
+                        checkCount--;
+                    }
+                } catch (Throwable e) {
+                    Log.d("auth status error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                    updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+                }
+                if(checkCount == 0){
+                    Log.d("auth status error", "timeout");
+                    updateStatusText("auth status timeout");
+                }
+            }
+        });
+
+        statusThread.start();
     }
 
     static String zerePad(String s, int count) {
