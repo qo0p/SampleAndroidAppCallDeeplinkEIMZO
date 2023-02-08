@@ -28,14 +28,14 @@ import javax.net.ssl.HttpsURLConnection;
 public class MainActivity extends AppCompatActivity {
 
     // !!! CHANGE IT TO YOUR DOMAIN, WHICH RUNS REST-API, DO NOT USE THIS m.e-imzo.uz DOMAIN IN PRODUCTION
-    private static String DOMAIN = "m.e-imzo.uz";
-    private static String AUTH_URL = "https://" + DOMAIN + "/frontend/auth";
-    private static String SIGN_URL = "https://" + DOMAIN + "/frontend/sign";
-    private static String STATUS_URL = "https://" + DOMAIN + "/frontend/status";
+    private static String DOMAIN = "test.e-imzo.uz";
+    private static String AUTH_URL = "https://" + DOMAIN + "/frontend/mobile/auth";
+    private static String SIGN_URL = "https://" + DOMAIN + "/frontend/mobile/sign";
+    private static String STATUS_URL = "https://" + DOMAIN + "/frontend/mobile/status";
 
     // !!! CHANGE IT TO YOUR BACKEND API
-    private static String AUTH_RESULT_URL = "https://" + DOMAIN + "/demo2/user_auth_result.php";
-    private static String VERIFY_RESULT_URL = "https://" + DOMAIN + "/demo2/doc_verify_result.php";
+    private static String AUTH_RESULT_URL = "https://" + DOMAIN + "/demo/eimzoidcard/user_auth_result.php";
+    private static String VERIFY_RESULT_URL = "https://" + DOMAIN + "/demo/eimzoidcard/doc_verify_result.php";
 
     private final int STATUS_CHECK_EACH_SECOND = 5;
     private final int STATUS_CHECK_INTERVAL = STATUS_CHECK_EACH_SECOND * 1000;
@@ -110,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
 
                     JSONObject jsonObject = new JSONObject(res.responseBody);
                     int status = jsonObject.getInt("status");
-                    String message = jsonObject.getString("message");
+                    String message = jsonObject.optString("message","");
                     if (status != 1) {
                         throw new Exception("AUTH STATUS " + status + " - " + message);
                     }
@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
 
                     JSONObject jsonObject = new JSONObject(res.responseBody);
                     int status = jsonObject.getInt("status");
-                    String message = jsonObject.getString("message");
+                    String message = jsonObject.optString("message","");
                     if (status != 1) {
                         throw new Exception("SIGN STATUS " + status + " - " + message);
                     }
@@ -324,7 +324,7 @@ public class MainActivity extends AppCompatActivity {
 
                         JSONObject jsonObject = new JSONObject(res.responseBody);
                         int status = jsonObject.getInt("status");
-                        String message = jsonObject.getString("message");
+                        String message = jsonObject.optString("message","");
                         if (status != 1 && status != 2) {
                             throw new Exception("STATUS " + status + " - " + message);
                         }
