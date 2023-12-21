@@ -50,6 +50,12 @@
                 android:layout_height="wrap_content"
                 android:text="Продписать" />
 
+            <Button
+                android:id="@+id/bSignFile"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Продписать Файл" />
+
             <TextView
                 android:id="@+id/tvStatus"
                 android:layout_width="match_parent"

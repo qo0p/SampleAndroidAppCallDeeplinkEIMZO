@@ -1,24 +1,35 @@
 package uz.yt.sample.myapplication;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.file.Files;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.CRC32;
@@ -45,6 +56,9 @@ public class MainActivity extends AppCompatActivity {
     TextView statusText;
     EditText resultText;
     EditText signText;
+
+    private static final int MY_REQUEST_CODE_PERMISSION = 1000;
+    private static final int MY_RESULT_CODE_FILECHOOSER = 2000;
 
     final void updateStatusText(final String text) {
         runOnUiThread(new Runnable() {
@@ -90,6 +104,106 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        Button signFileButton = findViewById(R.id.bSignFile);
+        signFileButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                askPermissionAndBrowseFile();
+            }
+        });
+
+    }
+
+    void askPermissionAndBrowseFile() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int permisson = ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+            );
+            if (permisson != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        MY_REQUEST_CODE_PERMISSION
+                );
+                return;
+            }
+        }
+        doBrowseFile();
+    }
+
+    private void doBrowseFile() {
+        Intent chooseFileIntent = new Intent(Intent.ACTION_GET_CONTENT);
+        chooseFileIntent.setType("*/*");
+        // Only return URIs that can be opened with ContentResolver
+        chooseFileIntent.addCategory(Intent.CATEGORY_OPENABLE);
+
+        chooseFileIntent = Intent.createChooser(chooseFileIntent, "Choose a file");
+        startActivityForResult(chooseFileIntent, MY_RESULT_CODE_FILECHOOSER);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        //
+        switch (requestCode) {
+            case MY_REQUEST_CODE_PERMISSION: {
+
+                // Note: If request is cancelled, the result arrays are empty.
+                // Permissions granted (CALL_PHONE).
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                    Log.i("file chooser", "Permission granted!");
+                    Toast.makeText(getApplicationContext(), "Permission granted!", Toast.LENGTH_SHORT).show();
+
+                    this.doBrowseFile();
+                }
+                // Cancelled or denied.
+                else {
+                    Log.i("file chooser", "Permission denied!");
+                    Toast.makeText(getApplicationContext(), "Permission denied!", Toast.LENGTH_SHORT).show();
+                }
+                break;
+            }
+        }
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        switch (requestCode) {
+            case MY_RESULT_CODE_FILECHOOSER:
+                if (resultCode == Activity.RESULT_OK) {
+                    if (data != null) {
+                        Uri fileUri = data.getData();
+                        Log.i("file chooser", "Uri: " + fileUri);
+
+                        String filePath = null;
+                        try {
+                            filePath = FileUtils.getPath(getApplicationContext(), fileUri);
+                        } catch (Exception e) {
+                            Log.e("file chooser", "Error: " + e);
+                            Toast.makeText(getApplicationContext(), "Error: " + e, Toast.LENGTH_SHORT).show();
+                        }
+                        this.signText.setText(filePath);
+
+                        int rd = 0;
+                        byte[] buf = new byte[1024];
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        try (InputStream inputStream = getContentResolver().openInputStream(fileUri)) {
+                            while ((rd = inputStream.read(buf)) != -1) {
+                                baos.write(buf, 0, rd);
+                            }
+                            doSignFile(baos.toByteArray());
+                        } catch (Throwable e) {
+                            Toast.makeText(getApplicationContext(), e.getMessage(), Toast.LENGTH_SHORT).show();
+                            Log.e("file open", e.getMessage(), e);
+                        }
+
+                    }
+                    break;
+                }
+                super.onActivityResult(requestCode, resultCode, data);
+        }
     }
 
     void doAuth() {
@@ -110,7 +224,7 @@ public class MainActivity extends AppCompatActivity {
 
                     JSONObject jsonObject = new JSONObject(res.responseBody);
                     int status = jsonObject.getInt("status");
-                    String message = jsonObject.optString("message","");
+                    String message = jsonObject.optString("message", "");
                     if (status != 1) {
                         throw new Exception("AUTH STATUS " + status + " - " + message);
                     }
@@ -176,7 +290,7 @@ public class MainActivity extends AppCompatActivity {
 
                     JSONObject jsonObject = new JSONObject(res.responseBody);
                     int status = jsonObject.getInt("status");
-                    String message = jsonObject.optString("message","");
+                    String message = jsonObject.optString("message", "");
                     if (status != 1) {
                         throw new Exception("SIGN STATUS " + status + " - " + message);
                     }
@@ -224,7 +338,71 @@ public class MainActivity extends AppCompatActivity {
         t.start();
     }
 
-    void makeAndCallDeepLink(String qrCode){
+    void doSignFile(byte[] file) {
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                updateStatusText("");
+                updateResultText("");
+                try {
+                    RawResult res = post(new URL(SIGN_URL), new byte[0]);
+                    Log.d("sign http status", "HTTP " + res.responseCode + " - " + res.responseMessage);
+                    Log.d("sign http body", res.responseBody);
+                    if (res.responseCode != 200) {
+                        throw new Exception("HTTP " + res.responseCode + " - " + res.responseMessage);
+                    }
+                    updateResultText(res.responseBody);
+
+
+                    JSONObject jsonObject = new JSONObject(res.responseBody);
+                    int status = jsonObject.getInt("status");
+                    String message = jsonObject.optString("message", "");
+                    if (status != 1) {
+                        throw new Exception("SIGN STATUS " + status + " - " + message);
+                    }
+
+                    String siteId = jsonObject.getString("siteId");
+                    final String documentId = jsonObject.getString("documentId");
+
+                    Log.d("sign siteId", siteId);
+                    Log.d("sign documentId", documentId);
+
+                    byte[] hash = calcHash(file);
+
+                    String hashString = Hex.encode(hash);
+                    Log.d("sign hashString", hashString);
+
+                    String qrCode = makeQRCode(siteId, documentId, hashString);
+                    Log.d("sign qrCode", qrCode);
+
+                    makeAndCallDeepLink(qrCode);
+
+                    Log.d("sign status", "run get status thread");
+
+                    pollStatus(documentId, new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                getFileVerifyResult(documentId, file);
+                            } catch (Throwable e) {
+                                Log.d("sign result error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                                updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+                            }
+                        }
+                    });
+
+
+                } catch (Throwable e) {
+                    Log.d("sign error", e.getClass().getSimpleName() + ": " + e.getMessage());
+                    updateStatusText(e.getClass().getSimpleName() + ": " + e.getMessage());
+
+                }
+            }
+        });
+        t.start();
+    }
+
+    void makeAndCallDeepLink(String qrCode) {
         String deepLink = "eimzo://sign?qc=" + qrCode;
         Log.d("makeAndCallDeepLink", deepLink);
 
@@ -234,6 +412,16 @@ public class MainActivity extends AppCompatActivity {
 
     byte[] calcHash(String text) throws Exception {
         byte[] data = text.getBytes();
+        OzDSt1106Digest digest = new OzDSt1106Digest();
+        digest.reset();
+        digest.update(data, 0, data.length);
+
+        byte[] hash = new byte[digest.getDigestSize()];
+        digest.doFinal(hash, 0);
+        return hash;
+    }
+
+    byte[] calcHash(byte[] data) throws Exception {
         OzDSt1106Digest digest = new OzDSt1106Digest();
         digest.reset();
         digest.update(data, 0, data.length);
@@ -301,6 +489,27 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    void getFileVerifyResult(String documentId, byte[] file) throws Exception {
+        String postData2 = "documentId=" + URLEncoder.encode(documentId, "UTF-8") + "&Document64=" + URLEncoder.encode(Base64.encodeToString(file, Base64.NO_WRAP), "UTF-8");
+        RawResult res2 = post(new URL(VERIFY_RESULT_URL), postData2.getBytes());
+        Log.d("auth result http status", "HTTP " + res2.responseCode + " - " + res2.responseMessage);
+        Log.d("auth result http body", res2.responseBody);
+        if (res2.responseCode != 200) {
+            throw new Exception("HTTP " + res2.responseCode + " - " + res2.responseMessage);
+        }
+
+        // !!! DO NOT USE THIS WAY, AS IT IS JUST FOR DEMO
+        Matcher m = fetchJson.matcher(res2.responseBody);
+        boolean hasJson = m.find();
+        int groupCount = m.groupCount();
+        Log.d("auth result parse", "hasJson= " + hasJson + ", groupCount=" + groupCount);
+        if (hasJson && groupCount > 0) {
+            updateResultText(m.group(1));
+        } else {
+            updateResultText(res2.responseBody);
+        }
+    }
+
     void pollStatus(String documentId, Runnable onSuccess) {
         Thread statusThread = new Thread(new Runnable() {
             @Override
@@ -324,7 +533,7 @@ public class MainActivity extends AppCompatActivity {
 
                         JSONObject jsonObject = new JSONObject(res.responseBody);
                         int status = jsonObject.getInt("status");
-                        String message = jsonObject.optString("message","");
+                        String message = jsonObject.optString("message", "");
                         if (status != 1 && status != 2) {
                             throw new Exception("STATUS " + status + " - " + message);
                         }
